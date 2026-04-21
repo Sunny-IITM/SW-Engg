@@ -16,7 +16,7 @@ ENTRY_TYPE_OPTIONS = {"regular", "overtime", "manual", "image", "leave"}
 
 
 def utc_now():
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def validate_month_year(month, year):

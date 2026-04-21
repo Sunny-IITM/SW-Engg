@@ -18,7 +18,7 @@ RAW_MATERIAL_UNITS = {
 
 
 def utc_today():
-    return datetime.now(UTC).date()
+    return datetime.now(timezone.utc).date()
 
 
 def get_setting_for_product(product_id):

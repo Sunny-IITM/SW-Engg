@@ -4,7 +4,7 @@ from extensions import db
 
 
 def utc_now():
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def utc_today():

@@ -11,7 +11,7 @@ from tests.helpers import assert_api_response
 
 
 def utc_now():
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def _sqlite_uri(path: Path) -> str:

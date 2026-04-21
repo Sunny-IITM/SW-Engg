@@ -14,7 +14,7 @@ analytics = Blueprint("analytics", __name__)
 
 
 def utc_today():
-    return datetime.now(UTC).date()
+    return datetime.now(timezone.utc).date()
 
 
 def format_currency(value):

@@ -17,7 +17,7 @@ PAYMENT_STATUS_OPTIONS = {"pending", "paid", "failed", "refunded"}
 
 
 def utc_now():
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def title_case(value, fallback=""):
