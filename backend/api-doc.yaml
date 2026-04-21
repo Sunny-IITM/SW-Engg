@@ -1,0 +1,3035 @@
+openapi: 3.0.0
+info:
+  title: Kulhad Flask Backend API
+  version: 1.0.0
+  description: |
+    OpenAPI 3.0 specification generated from the current Flask backend blueprints.
+
+    Authentication-protected endpoints use JWT bearer authentication.
+    The computer vision endpoints upload an image to the backend, which then calls an external object-detection service internally.
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+tags:
+  - name: auth
+    description: Registration and login operations.
+  - name: products
+    description: Catalog and product image management.
+  - name: cart
+    description: Cart schema placeholder. No cart endpoints are currently implemented.
+  - name: orders
+    description: Checkout profile, order placement, and order management.
+  - name: production
+    description: Production attendance logging and image-based kulhad detection.
+  - name: inventory
+    description: Finished goods inventory and raw material inventory.
+  - name: analytics
+    description: Admin dashboard analytics and daily reporting.
+  - name: admin
+    description: Admin-managed user operations.
+  - name: profile
+    description: Self-service user profile operations.
+  - name: payroll
+    description: Payroll calculation and status management.
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - auth
+      summary: Register a customer account
+      description: Creates a new customer user and linked customer profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Jane Smith
+              email: jane@example.com
+              password: securePass123
+              role: customer
+              phone: "9876543210"
+              address: Chennai
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: User registered successfully
+        '400':
+          description: Validation or uniqueness error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                missingFields:
+                  value:
+                    message: Name, email, and password are required
+                invalidRole:
+                  value:
+                    message: Registration is only available for customer accounts
+                duplicateEmail:
+                  value:
+                    message: Email already exists
+  /api/auth/login:
+    post:
+      tags:
+        - auth
+      summary: Log in a user
+      description: Validates credentials and returns a JWT plus role-specific profile fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: customer@example.com
+              password: customerpass
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+              example:
+                token: <jwt-token>
+                name: Customer User
+                role: customer
+                email: customer@example.com
+                phone: "9999999999"
+                address: Main Street
+                city: Jaipur
+                state: Rajasthan
+                postal_code: "302001"
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Invalid credentials
+        '403':
+          description: Disabled account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: This account has been disabled
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: User not found
+
+  /api/products/:
+    get:
+      tags:
+        - products
+      summary: List products
+      description: Returns the full product catalog. This endpoint is public.
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+              example:
+                - id: 1
+                  name: Classic Kulhad
+                  category: Kulhad
+                  price: 20.0
+                  wage_per_kulhad: 25.0
+                  stock: 120
+                  image: classic.png
+    post:
+      tags:
+        - products
+      summary: Create a product
+      description: Creates a new catalog product. Admin access is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreateRequest'
+            example:
+              name: Premium Serving Kulhad
+              category: Kulhad
+              price: 65
+              wage_per_kulhad: 40
+              stock: 18
+              image: premium-serving-kulhad.webp
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Product created
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/products/images/{filename}:
+    get:
+      tags:
+        - products
+      summary: Fetch a product image
+      description: Serves a static product image file by filename.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      responses:
+        '200':
+          description: Image file response
+          content:
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+        '404':
+          description: Image not found
+  /api/products/upload-image:
+    post:
+      tags:
+        - products
+      summary: Upload a product image
+      description: Uploads a product image into backend static storage. Admin access is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+            encoding:
+              image:
+                contentType: image/png, image/jpeg, image/webp
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductImageUploadResponse'
+              example:
+                filename: upload.jpg
+        '400':
+          description: Missing or unsupported image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing:
+                  value:
+                    error: Image file is required
+                invalid:
+                  value:
+                    error: Only PNG, JPG, JPEG, and WEBP images are supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/products/history:
+    get:
+      tags:
+        - products
+      summary: List product history
+      description: Returns the latest 100 product history entries. Admin access is required.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Product history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/products/{product_id}:
+    put:
+      tags:
+        - products
+      summary: Update a product
+      description: Updates one or more product fields. Admin access is required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateRequest'
+            example:
+              price: 19.0
+              stock: 99
+              image: updated.jpg
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Product updated
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+    delete:
+      tags:
+        - products
+      summary: Delete a product
+      description: Deletes a product. Admin access is required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Product deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+
+  /api/inventory/:
+    get:
+      tags:
+        - inventory
+      summary: List finished goods inventory
+      description: Returns admin-facing inventory rows for products and their minimum stock thresholds.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Inventory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryProduct'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/inventory/history:
+    get:
+      tags:
+        - inventory
+      summary: List finished goods inventory history
+      description: Returns up to 100 inventory adjustment history records.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Inventory history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/inventory/adjust:
+    post:
+      tags:
+        - inventory
+      summary: Adjust finished goods inventory
+      description: Adds or removes product stock and optionally updates minimum stock.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryAdjustRequest'
+            example:
+              product_id: 1
+              type: add
+              quantity: 25
+              reason: Weekly production batch
+              min_stock: 10
+      responses:
+        '200':
+          description: Inventory updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAdjustResponse'
+              example:
+                message: Inventory updated
+                product:
+                  id: 1
+                  name: Classic Kulhad
+                  category: Kulhad
+                  stock: 75
+                  min_stock: 10
+                  price: 20.0
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+  /api/inventory/raw:
+    get:
+      tags:
+        - inventory
+      summary: List raw material inventory
+      description: Returns all raw material inventory items.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Raw material inventory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RawMaterial'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - inventory
+      summary: Create a raw material
+      description: Creates a raw material inventory record and history entry.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawMaterialRequest'
+            example:
+              name: Clay Mix
+              category: Clay
+              unit: kg
+              supplier: Soil Suppliers
+              quantity: 100
+              reorder_level: 25
+              cost_per_unit: 4.5
+      responses:
+        '201':
+          description: Raw material created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawMaterial'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/inventory/raw/history:
+    get:
+      tags:
+        - inventory
+      summary: List raw material inventory history
+      description: Returns up to 100 raw material inventory history records.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Raw material history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RawMaterialHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/inventory/raw/{item_id}:
+    put:
+      tags:
+        - inventory
+      summary: Update a raw material
+      description: Updates raw material metadata such as name, supplier, and unit.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawMaterialRequest'
+      responses:
+        '200':
+          description: Raw material updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawMaterial'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RawMaterialNotFound'
+    delete:
+      tags:
+        - inventory
+      summary: Delete a raw material
+      description: Deletes a raw material inventory row.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: Raw material deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRawMaterialResponse'
+              example:
+                message: Raw material deleted
+                id: 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RawMaterialNotFound'
+  /api/inventory/raw/{item_id}/adjust:
+    put:
+      tags:
+        - inventory
+      summary: Adjust raw material stock
+      description: Increases or decreases raw material quantity.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawMaterialStockAdjustRequest'
+            example:
+              adjustment: 10
+              reason: Restocked from supplier
+      responses:
+        '200':
+          description: Raw material stock adjusted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawMaterialStockAdjustResponse'
+              example:
+                message: Restocked from supplier
+                material:
+                  id: 3
+                  name: Clay Mix
+                  category: Clay
+                  quantity: 110
+                  unit: kg
+                  reorder_level: 25
+                  cost_per_unit: 4.5
+                  supplier: Soil Suppliers
+                  last_restocked: '2026-04-20'
+                  inventory_value: 495
+                  is_low_stock: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RawMaterialNotFound'
+
+  /api/analytics/dashboard:
+    get:
+      tags:
+        - analytics
+      summary: Get dashboard summary
+      description: Returns admin dashboard counts, low stock alerts, and recent orders.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsDashboardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/analytics/summary:
+    get:
+      tags:
+        - analytics
+      summary: Get analytics summary
+      description: Returns a full analytics snapshot with sales, inventory, payments, and overview sections.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Analytics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/analytics/daily-report/send:
+    post:
+      tags:
+        - analytics
+      summary: Send daily analytics report
+      description: Sends the daily report to a configured external chat webhook.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Daily report sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyReportSendResponse'
+              example:
+                message: Daily report sent successfully
+                preview: Daily Overall Report - 2026-04-20
+                response: ok
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: External delivery failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Unable to reach external reporting webhook
+
+  /api/admin/users:
+    get:
+      tags:
+        - admin
+      summary: List managed users
+      description: Returns customer, employee, and admin users. Supports optional role filtering.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          description: Optional role filter.
+          schema:
+            type: string
+            enum:
+              - customer
+              - employee
+              - admin
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - admin
+      summary: Create a managed user
+      description: Creates a customer or employee account. Admin access is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserCreateRequest'
+            example:
+              name: Worker Two
+              email: worker.two@example.com
+              password: workerpass
+              role: employee
+              phone: "1234567890"
+              address: Factory Road
+              department: Production
+              job_title: Painter
+              daily_wage: 18000
+              is_active: true
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/users/{user_id}:
+    put:
+      tags:
+        - admin
+      summary: Update a managed user
+      description: Updates an existing customer or employee account. Admin access is required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserUpdateRequest'
+            example:
+              name: Customer User Updated
+              phone: "1111111111"
+              address: Updated Street
+              is_active: true
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+    delete:
+      tags:
+        - admin
+      summary: Delete a managed user
+      description: Deletes a user account. The current admin account cannot delete itself.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: User deleted
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /api/profile/me:
+    get:
+      tags:
+        - profile
+      summary: Get current user profile
+      description: Returns the authenticated user's profile, with customer- or employee-specific fields.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+    put:
+      tags:
+        - profile
+      summary: Update current user profile
+      description: Updates the authenticated user's profile and optionally changes the password.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+            example:
+              name: Customer Prime
+              phone: "2222222222"
+              address: Prime Street
+              city: Jodhpur
+              state: Rajasthan
+              postal_code: "342001"
+              current_password: customerpass
+              new_password: newcustomerpass
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /api/orders/checkout-profile:
+    get:
+      tags:
+        - orders
+      summary: Get checkout profile
+      description: Returns the authenticated customer's checkout address profile.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Checkout profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutProfile'
+              example:
+                name: Customer User
+                email: customer@example.com
+                phone: "9999999999"
+                address: Main Street
+                city: Jaipur
+                state: Rajasthan
+                postal_code: "302001"
+                has_saved_address: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-customer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Checkout profile is only available for customers
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+    put:
+      tags:
+        - orders
+      summary: Update checkout profile
+      description: Updates the authenticated customer's saved checkout address.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutProfileUpdateRequest'
+            example:
+              phone: "9999999999"
+              address: Main Street
+              city: Jaipur
+              state: Rajasthan
+              postal_code: "302001"
+      responses:
+        '200':
+          description: Checkout profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-customer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Checkout profile is only available for customers
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+  /api/orders/:
+    post:
+      tags:
+        - orders
+      summary: Place an order
+      description: Creates a customer order, decrements stock, calculates shipping, and creates a payment record.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+            example:
+              phone: "9999999999"
+              address: Main Street
+              city: Jaipur
+              state: Rajasthan
+              postal_code: "302001"
+              payment_method: UPI
+              items:
+                - id: 1
+                  qty: 2
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCreateResponse'
+              example:
+                message: Order placed successfully
+                id: 12
+                order_number: ORD-0012
+                status: Pending
+                payment: Paid
+                method: UPI
+                amount: 92.0
+                items:
+                  - name: Classic Kulhad
+                    quantity: 2
+                    subtotal: 42.0
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-customer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Only customer accounts can place orders
+        '404':
+          description: User or product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                user:
+                  value:
+                    error: User not found
+                product:
+                  value:
+                    error: One or more products could not be found
+  /api/orders/admin:
+    get:
+      tags:
+        - orders
+      summary: List orders for admins
+      description: Returns all orders enriched with customer, payment, and item information.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/orders/my-history:
+    get:
+      tags:
+        - orders
+      summary: Get customer order history
+      description: Returns order history for the authenticated customer.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Customer order history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-customer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Order history is only available for customers
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+  /api/orders/{order_id}/status:
+    put:
+      tags:
+        - orders
+      summary: Update order and payment status
+      description: Updates an order status and optionally its payment status. Admin access is required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusUpdateRequest'
+            example:
+              status: shipped
+              payment: paid
+      responses:
+        '200':
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusUpdateResponse'
+              example:
+                message: Order updated
+                id: 12
+                status: Shipped
+                payment: Paid
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/OrderNotFound'
+  /api/orders/bulk-payment-status:
+    put:
+      tags:
+        - orders
+      summary: Bulk update payment status
+      description: Updates payment status for multiple orders. Admin access is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkPaymentStatusRequest'
+            example:
+              order_ids:
+                - 1
+                - 2
+              payment: paid
+      responses:
+        '200':
+          description: Payment statuses updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkPaymentStatusResponse'
+              example:
+                message: Updated payment status for 2 order(s)
+                orders:
+                  - id: 1
+                    payment: Paid
+                  - id: 2
+                    payment: Paid
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/production/entries:
+    get:
+      tags:
+        - production
+      summary: Get employee production entries
+      description: Returns production attendance rows for the authenticated employee.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Month'
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: Production entry list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionEntry'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-employee account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Only employees can access production entries
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+  /api/production/log:
+    post:
+      tags:
+        - production
+      summary: Log production
+      description: Creates a production entry for the authenticated employee.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionLogRequest'
+            example:
+              date: '2026-04-20'
+              product_id: 1
+              product: Classic Kulhad
+              quantity: 8
+              method: manual
+              entry_type: manual
+              status: present
+              notes: Manual logging
+      responses:
+        '201':
+          description: Production entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionEntry'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-employee account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Only employees can access production entries
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+  /api/production/detect:
+    post:
+      tags:
+        - production
+      summary: Detect kulhads from an uploaded image
+      description: |
+        Uploads an image to the backend, which stores it temporarily and invokes an external object-detection service.
+
+        The current Flask route validates image uploads and returns normalized detection results.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Detection completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionResponse'
+              example:
+                success: true
+                kulhad_count: 2
+                detections:
+                  - class: kulhad
+                    confidence: 0.87
+                    x: 212
+                    y: 180
+                    width: 110
+                    height: 140
+                  - class: kulhad
+                    confidence: 0.76
+                    x: 140
+                    y: 120
+                    width: 90
+                    height: 100
+        '400':
+          description: Invalid upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionErrorResponse'
+              examples:
+                missingFile:
+                  value:
+                    success: false
+                    error: missing_file
+                    message: Image file is required
+                emptyFile:
+                  value:
+                    success: false
+                    error: empty_file
+                    message: Uploaded image is empty
+                invalidType:
+                  value:
+                    success: false
+                    error: invalid_file_type
+                    message: "Unsupported image format. Allowed formats: .bmp, .jpeg, .jpg, .png, .webp"
+        '500':
+          description: Detection or configuration failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionErrorResponse'
+              examples:
+                inference:
+                  value:
+                    success: false
+                    error: inference_failed
+                configuration:
+                  value:
+                    success: false
+                    error: configuration_error
+                    message: ROBOFLOW_API_KEY is not configured
+  /detect-kulhad:
+    post:
+      tags:
+        - production
+      summary: Detect kulhads from an uploaded image
+      description: Alias of `/api/production/detect`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Detection completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionResponse'
+        '400':
+          description: Invalid upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionErrorResponse'
+        '500':
+          description: Detection or configuration failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionErrorResponse'
+
+  /api/payroll/:
+    get:
+      tags:
+        - payroll
+      summary: Get payroll for all employees
+      description: Returns payroll rows for the selected month and year. Admin access is required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Month'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/AsOfDate'
+      responses:
+        '200':
+          description: Payroll list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayrollRecordResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/payroll/me:
+    get:
+      tags:
+        - payroll
+      summary: Get current employee payroll
+      description: Returns payroll for the authenticated employee.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Month'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/AsOfDate'
+      responses:
+        '200':
+          description: Payroll record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRecordResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User or employee profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                user:
+                  value:
+                    error: User not found
+                employee:
+                  value:
+                    error: Employee profile not found
+  /api/payroll/{employee_id}:
+    put:
+      tags:
+        - payroll
+      summary: Update payroll record
+      description: Updates bonus, deductions, status, and payment date for an employee payroll record.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollUpdateRequest'
+            example:
+              month: 4
+              year: 2026
+              bonus: 250
+              deductions: 50
+              status: paid
+              paid_on: '2026-04-25'
+      responses:
+        '200':
+          description: Payroll record updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRecordResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Employee not found
+  /api/payroll/bulk-status:
+    put:
+      tags:
+        - payroll
+      summary: Bulk update payroll status
+      description: Updates payroll status for multiple employees in the selected month.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollBulkStatusRequest'
+            example:
+              month: 4
+              year: 2026
+              status: processed
+              current_statuses:
+                - pending
+      responses:
+        '200':
+          description: Payroll statuses updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollBulkStatusResponse'
+              example:
+                message: Updated 3 payroll record(s)
+                records:
+                  - id: 1
+                    status: processed
+                    paid_on: ''
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Product identifier.
+    Filename:
+      name: filename
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Static image filename.
+    ItemId:
+      name: item_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Raw material identifier.
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Order identifier.
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: User identifier.
+    EmployeeId:
+      name: employee_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Employee identifier.
+    Month:
+      name: month
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 12
+      description: Calendar month.
+    Year:
+      name: year
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: Calendar year.
+    AsOfDate:
+      name: as_of_date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      description: Optional cutoff date for payroll calculations.
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthErrorResponse'
+          example:
+            msg: Missing Authorization Header
+    Forbidden:
+      description: Authenticated user does not have the required role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageResponse'
+          example:
+            message: Access forbidden
+    Error400:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - $ref: '#/components/schemas/MessageResponse'
+    UserNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: User not found
+    ProductNotFound:
+      description: Product not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Product not found
+    RawMaterialNotFound:
+      description: Raw material not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Raw material not found
+    OrderNotFound:
+      description: Order not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Order not found
+  schemas:
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    AuthErrorResponse:
+      type: object
+      properties:
+        msg:
+          type: string
+      required:
+        - msg
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          type: string
+          enum:
+            - customer
+          default: customer
+        phone:
+          type: string
+        address:
+          type: string
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthLoginResponse:
+      type: object
+      required:
+        - token
+        - name
+        - role
+        - email
+      properties:
+        token:
+          type: string
+          description: JWT bearer token.
+        name:
+          type: string
+        role:
+          type: string
+          enum:
+            - admin
+            - customer
+            - employee
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        department:
+          type: string
+        job_title:
+          type: string
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+          format: float
+        wage_per_kulhad:
+          type: number
+          format: float
+        stock:
+          type: integer
+        image:
+          type: string
+      required:
+        - id
+        - name
+        - category
+        - price
+        - wage_per_kulhad
+        - stock
+        - image
+      example:
+        id: 1
+        name: Classic Kulhad
+        category: Kulhad
+        price: 20.0
+        wage_per_kulhad: 25.0
+        stock: 120
+        image: classic.png
+    ProductCreateRequest:
+      type: object
+      required:
+        - name
+        - category
+        - price
+        - stock
+        - wage_per_kulhad
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+          format: float
+        wage_per_kulhad:
+          type: number
+          format: float
+        stock:
+          type: integer
+        image:
+          type: string
+    ProductUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+          format: float
+        wage_per_kulhad:
+          type: number
+          format: float
+        stock:
+          type: integer
+        image:
+          type: string
+    ProductImageUploadResponse:
+      type: object
+      properties:
+        filename:
+          type: string
+      required:
+        - filename
+    ProductHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        desc:
+          type: string
+        date:
+          type: string
+        by:
+          type: string
+        type:
+          type: string
+      required:
+        - id
+        - name
+        - desc
+        - date
+        - by
+        - type
+    InventoryProduct:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        stock:
+          type: integer
+        min_stock:
+          type: integer
+        price:
+          type: number
+          format: float
+      required:
+        - id
+        - name
+        - category
+        - stock
+        - min_stock
+        - price
+    InventoryHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        desc:
+          type: string
+        change:
+          type: integer
+        from:
+          type: integer
+        to:
+          type: integer
+        date:
+          type: string
+        by:
+          type: string
+        type:
+          type: string
+      required:
+        - id
+        - name
+        - desc
+        - change
+        - from
+        - to
+        - date
+        - by
+        - type
+    InventoryAdjustRequest:
+      type: object
+      required:
+        - product_id
+        - type
+        - quantity
+      properties:
+        product_id:
+          type: integer
+        type:
+          type: string
+          enum:
+            - add
+            - remove
+        quantity:
+          type: integer
+        reason:
+          type: string
+        min_stock:
+          type: integer
+    InventoryAdjustResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        product:
+          $ref: '#/components/schemas/InventoryProduct'
+      required:
+        - message
+        - product
+    RawMaterial:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        quantity:
+          type: number
+          format: float
+        unit:
+          type: string
+        reorder_level:
+          type: number
+          format: float
+        cost_per_unit:
+          type: number
+          format: float
+        supplier:
+          type: string
+        last_restocked:
+          type: string
+          format: date
+        inventory_value:
+          type: number
+          format: float
+        is_low_stock:
+          type: boolean
+      required:
+        - id
+        - name
+        - category
+        - quantity
+        - unit
+        - reorder_level
+        - cost_per_unit
+        - supplier
+        - last_restocked
+        - inventory_value
+        - is_low_stock
+    RawMaterialRequest:
+      type: object
+      required:
+        - name
+        - unit
+      properties:
+        name:
+          type: string
+        raw_material_name:
+          type: string
+          description: Alternate accepted input key.
+        category:
+          type: string
+          enum:
+            - Clay
+            - Glaze
+            - Paint
+            - Packaging
+            - Other
+        unit:
+          type: string
+        supplier:
+          type: string
+        supplier_name:
+          type: string
+          description: Alternate accepted input key.
+        quantity:
+          type: number
+          format: float
+        initial_quantity:
+          type: number
+          format: float
+        reorder_level:
+          type: number
+          format: float
+        cost_per_unit:
+          type: number
+          format: float
+    RawMaterialStockAdjustRequest:
+      type: object
+      required:
+        - adjustment
+      properties:
+        adjustment:
+          type: number
+          format: float
+        reason:
+          type: string
+    RawMaterialStockAdjustResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        material:
+          $ref: '#/components/schemas/RawMaterial'
+      required:
+        - message
+        - material
+    DeleteRawMaterialResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        id:
+          type: integer
+      required:
+        - message
+        - id
+    RawMaterialHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        desc:
+          type: string
+        change:
+          type: number
+          format: float
+        from:
+          type: number
+          format: float
+        to:
+          type: number
+          format: float
+        unit:
+          type: string
+        date:
+          type: string
+        by:
+          type: string
+        type:
+          type: string
+      required:
+        - id
+        - name
+        - desc
+        - change
+        - from
+        - to
+        - unit
+        - date
+        - by
+        - type
+    AnalyticsDashboardResponse:
+      type: object
+      properties:
+        stats:
+          type: object
+          properties:
+            products:
+              type: integer
+            orders:
+              type: integer
+            customers:
+              type: integer
+            employees:
+              type: integer
+          required:
+            - products
+            - orders
+            - customers
+            - employees
+        low_stock:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              stock:
+                type: integer
+              min_stock:
+                type: integer
+            required:
+              - id
+              - name
+              - stock
+              - min_stock
+        recent_orders:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              order_number:
+                type: string
+              customer_name:
+                type: string
+              amount:
+                type: number
+                format: float
+              status:
+                type: string
+            required:
+              - id
+              - order_number
+              - customer_name
+              - amount
+              - status
+      required:
+        - stats
+        - low_stock
+        - recent_orders
+    ChartSeries:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+        values:
+          type: array
+          items:
+            type: number
+            format: float
+      required:
+        - labels
+        - values
+    InventoryMovementSeries:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+        added:
+          type: array
+          items:
+            type: integer
+        sold:
+          type: array
+          items:
+            type: integer
+      required:
+        - labels
+        - added
+        - sold
+    AnalyticsSummaryResponse:
+      type: object
+      properties:
+        sales:
+          type: object
+          properties:
+            today_revenue:
+              type: number
+              format: float
+            monthly_revenue:
+              type: number
+              format: float
+            total_orders:
+              type: integer
+            total_revenue:
+              type: number
+              format: float
+            daily_revenue:
+              $ref: '#/components/schemas/ChartSeries'
+            monthly_revenue_chart:
+              $ref: '#/components/schemas/ChartSeries'
+          required:
+            - today_revenue
+            - monthly_revenue
+            - total_orders
+            - total_revenue
+            - daily_revenue
+            - monthly_revenue_chart
+        inventory:
+          type: object
+          properties:
+            total_products:
+              type: integer
+            low_stock:
+              type: integer
+            inventory_value:
+              type: number
+              format: float
+            out_of_stock:
+              type: integer
+            low_stock_items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  stock:
+                    type: integer
+                  min_stock:
+                    type: integer
+                required:
+                  - name
+                  - stock
+                  - min_stock
+            stock_status:
+              $ref: '#/components/schemas/ChartSeries'
+            movement:
+              $ref: '#/components/schemas/InventoryMovementSeries'
+          required:
+            - total_products
+            - low_stock
+            - inventory_value
+            - out_of_stock
+            - low_stock_items
+            - stock_status
+            - movement
+        payments:
+          type: object
+          properties:
+            total_payments:
+              type: number
+              format: float
+            pending_amount:
+              type: number
+              format: float
+            completed_amount:
+              type: number
+              format: float
+            transaction_count:
+              type: integer
+            method_breakdown:
+              $ref: '#/components/schemas/ChartSeries'
+            trend:
+              $ref: '#/components/schemas/ChartSeries'
+          required:
+            - total_payments
+            - pending_amount
+            - completed_amount
+            - transaction_count
+            - method_breakdown
+            - trend
+        overview:
+          type: object
+          properties:
+            pending_orders:
+              type: integer
+            completed_orders:
+              type: integer
+            report_date:
+              type: string
+              format: date
+          required:
+            - pending_orders
+            - completed_orders
+            - report_date
+      required:
+        - sales
+        - inventory
+        - payments
+        - overview
+    DailyReportSendResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        preview:
+          type: string
+        response:
+          type: string
+      required:
+        - message
+        - preview
+        - response
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+            - admin
+            - customer
+            - employee
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        department:
+          type: string
+        job_title:
+          type: string
+        per_unit_wage:
+          type: number
+          format: float
+        daily_wage:
+          type: number
+          format: float
+      required:
+        - id
+        - name
+        - email
+        - role
+        - is_active
+        - created_at
+        - phone
+        - address
+        - department
+        - job_title
+    AdminUserCreateRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - role
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          type: string
+          enum:
+            - customer
+            - employee
+        is_active:
+          type: boolean
+          default: true
+        phone:
+          type: string
+        address:
+          type: string
+        department:
+          type: string
+        job_title:
+          type: string
+        per_unit_wage:
+          type: number
+          format: float
+        daily_wage:
+          type: number
+          format: float
+    AdminUserUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        is_active:
+          type: boolean
+        phone:
+          type: string
+        address:
+          type: string
+        department:
+          type: string
+        job_title:
+          type: string
+        per_unit_wage:
+          type: number
+          format: float
+        daily_wage:
+          type: number
+          format: float
+    ProfileCustomer:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+      required:
+        - name
+        - email
+        - role
+    ProfileEmployee:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        department:
+          type: string
+        job_title:
+          type: string
+        per_unit_wage:
+          type: number
+          format: float
+        salary:
+          type: number
+          format: float
+      required:
+        - name
+        - email
+        - role
+    ProfileResponse:
+      oneOf:
+        - $ref: '#/components/schemas/ProfileCustomer'
+        - $ref: '#/components/schemas/ProfileEmployee'
+        - $ref: '#/components/schemas/AuthUser'
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        current_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+    CheckoutProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        has_saved_address:
+          type: boolean
+      required:
+        - name
+        - email
+        - phone
+        - address
+        - city
+        - state
+        - postal_code
+        - has_saved_address
+    CheckoutProfileUpdateRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+    OrderLineItem:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        subtotal:
+          type: number
+          format: float
+      required:
+        - name
+        - quantity
+        - subtotal
+    OrderHistoryItem:
+      allOf:
+        - $ref: '#/components/schemas/OrderLineItem'
+        - type: object
+          properties:
+            id:
+              type: integer
+            price:
+              type: number
+              format: float
+            stock:
+              type: integer
+            image:
+              type: string
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        order_number:
+          type: string
+        status:
+          type: string
+        payment:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        method:
+          type: string
+        amount:
+          type: number
+          format: float
+        date:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/OrderLineItem'
+              - $ref: '#/components/schemas/OrderHistoryItem'
+        item_count:
+          type: integer
+      required:
+        - id
+        - order_number
+        - status
+        - payment
+        - name
+        - email
+        - phone
+        - address
+        - method
+        - amount
+        - date
+        - items
+        - item_count
+    Cart:
+      type: object
+      description: Cart schema placeholder for frontend integration. No cart endpoints are currently implemented.
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+              quantity:
+                type: integer
+        total_items:
+          type: integer
+        subtotal:
+          type: number
+          format: float
+    OrderCreateItem:
+      type: object
+      required:
+        - id
+        - qty
+      properties:
+        id:
+          type: integer
+        qty:
+          type: integer
+    OrderCreateRequest:
+      type: object
+      required:
+        - items
+      properties:
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        payment_method:
+          type: string
+          enum:
+            - Cash on Delivery
+            - UPI
+            - Credit / Debit Card
+        shipping:
+          type: number
+          format: float
+          description: Client-sent shipping is validated only for non-negative input; final shipping is determined server-side.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderCreateItem'
+    OrderCreateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        id:
+          type: integer
+        order_number:
+          type: string
+        status:
+          type: string
+        payment:
+          type: string
+        method:
+          type: string
+        amount:
+          type: number
+          format: float
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineItem'
+      required:
+        - message
+        - id
+        - order_number
+        - status
+        - payment
+        - method
+        - amount
+        - items
+    OrderStatusUpdateRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - confirmed
+            - shipped
+            - delivered
+            - cancelled
+        payment:
+          type: string
+          enum:
+            - pending
+            - paid
+            - failed
+            - refunded
+    OrderStatusUpdateResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        id:
+          type: integer
+        status:
+          type: string
+        payment:
+          type: string
+      required:
+        - message
+        - id
+        - status
+        - payment
+    BulkPaymentStatusRequest:
+      type: object
+      required:
+        - order_ids
+        - payment
+      properties:
+        order_ids:
+          type: array
+          items:
+            type: integer
+        payment:
+          type: string
+          enum:
+            - pending
+            - paid
+            - failed
+            - refunded
+    BulkPaymentStatusResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              payment:
+                type: string
+            required:
+              - id
+              - payment
+      required:
+        - message
+        - orders
+    ProductionEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+          nullable: true
+        product_name:
+          type: string
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        type:
+          type: string
+        kulhad_quantity:
+          type: integer
+        cup_quantity:
+          type: integer
+        total_quantity:
+          type: integer
+        wage_per_kulhad:
+          type: number
+          format: float
+        daily_wage:
+          type: number
+          format: float
+        notes:
+          type: string
+        created_at:
+          type: string
+      required:
+        - id
+        - product_name
+        - date
+        - status
+        - type
+        - kulhad_quantity
+        - cup_quantity
+        - total_quantity
+        - wage_per_kulhad
+        - daily_wage
+        - notes
+        - created_at
+    ProductionLogRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        product_id:
+          type: integer
+        product:
+          type: string
+        quantity:
+          type: integer
+        kulhad_quantity:
+          type: integer
+        method:
+          type: string
+          enum:
+            - manual
+            - regular
+            - overtime
+            - image
+            - leave
+        entry_type:
+          type: string
+          enum:
+            - regular
+            - overtime
+            - manual
+            - image
+            - leave
+        status:
+          type: string
+          enum:
+            - present
+            - leave
+        notes:
+          type: string
+    DetectionPrediction:
+      type: object
+      properties:
+        class:
+          type: string
+          example: kulhad
+        confidence:
+          type: number
+          format: float
+          example: 0.87
+        x:
+          type: integer
+          example: 212
+        y:
+          type: integer
+          example: 180
+        width:
+          type: integer
+          example: 110
+        height:
+          type: integer
+          example: 140
+      required:
+        - class
+        - confidence
+        - x
+        - y
+        - width
+        - height
+    DetectionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        kulhad_count:
+          type: integer
+        detections:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectionPrediction'
+      required:
+        - success
+        - kulhad_count
+        - detections
+    DetectionErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - success
+        - error
+    PayrollRecordResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        role:
+          type: string
+        department:
+          type: string
+        email:
+          type: string
+          format: email
+        total_quantity:
+          type: integer
+        gross_wages:
+          type: number
+          format: float
+        bonus:
+          type: number
+          format: float
+        deductions:
+          type: number
+          format: float
+        net_wages:
+          type: number
+          format: float
+        submitted_days:
+          type: integer
+        status:
+          type: string
+          enum:
+            - pending
+            - processed
+            - paid
+        paid_on:
+          type: string
+          format: date
+        calculated_through:
+          type: string
+          format: date
+        month:
+          type: integer
+        year:
+          type: integer
+      required:
+        - id
+        - name
+        - role
+        - department
+        - email
+        - total_quantity
+        - gross_wages
+        - bonus
+        - deductions
+        - net_wages
+        - submitted_days
+        - status
+        - paid_on
+        - calculated_through
+        - month
+        - year
+    PayrollUpdateRequest:
+      type: object
+      properties:
+        month:
+          type: integer
+        year:
+          type: integer
+        bonus:
+          type: number
+          format: float
+        deductions:
+          type: number
+          format: float
+        status:
+          type: string
+          enum:
+            - pending
+            - processed
+            - paid
+        paid_on:
+          type: string
+          format: date
+    PayrollBulkStatusRequest:
+      type: object
+      required:
+        - month
+        - year
+        - status
+        - current_statuses
+      properties:
+        month:
+          type: integer
+        year:
+          type: integer
+        status:
+          type: string
+          enum:
+            - pending
+            - processed
+            - paid
+        paid_on:
+          type: string
+          format: date
+        current_statuses:
+          type: array
+          items:
+            type: string
+            enum:
+              - pending
+              - processed
+              - paid
+    PayrollBulkStatusResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              status:
+                type: string
+              paid_on:
+                type: string
+                format: date
+            required:
+              - id
+              - status
+              - paid_on
+      required:
+        - message
+        - records
